@@ -7,7 +7,7 @@ import com.controlPanel.entity.TrCargo;
 public class CargoBean implements Serializable {
 
 	private static final long serialVersionUID = -3160560731905577823L;
-	private Long id; 
+	private Long id;//
 	private String descricao;
 
 	public CargoBean() { 
