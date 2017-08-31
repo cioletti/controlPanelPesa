@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<util:ModuleTitleWindow title="Pesquisar Cargo" xmlns:mx="http://www.adobe.com/2006/mxml" xmlns:util="util.*" layout="absolute" width="400" height="300">
+	
+	<mx:Script>
+		<![CDATA[
+			import bean.CargoBean;
+			
+			import mx.controls.Alert;
+			import mx.rpc.events.ResultEvent;
+			
+			import util.ProgressBarHelper;
+			private var urlLogin:String;
+			public var cargoBean:CargoBean;
+			public function init(urlLogin:String):void{
+				this.urlLogin = urlLogin;
+			}			
+			private function findAllCargo():void{
+				if (pesquisaCargo.length == 0){
+					Alert.show("O campo descrição é obrigatório!","Alerta");
+					return;
+				}
+				
+				serviceController.findAllCargosByCampoPesquisa(pesquisaCargo.text);
+			}
+			private function onResultFindAllCargosByCampoPesquisa(event:ResultEvent):void{
+				cargoGrid.dataProvider = event.result;
+			}
+			
+			private function doubleClickCptcd():void{
+				if(cargoGrid.selectedItem != null){
+					cargoBean = new CargoBean();
+					this.cargoBean = CargoBean(cargoGrid.selectedItem);
+					this.close();
+				}
+			}			
+		]]>
+	</mx:Script>
+	
+	<mx:RemoteObject destination="service" invoke="{ProgressBarHelper.openProgressBar(this)}" id="serviceController" showBusyCursor="true" fault="ProgressBarHelper.erro(event, urlLogin);ProgressBarHelper.removeProgressBar()">
+		<mx:method name="findAllCargosByCampoPesquisa" result="onResultFindAllCargosByCampoPesquisa(event);ProgressBarHelper.removeProgressBar()"/>
+	</mx:RemoteObject>	
+	
+	<mx:DataGrid x="0" y="117" width="372" id="cargoGrid" height="100%" doubleClickEnabled="true" doubleClick="doubleClickCptcd()">
+		<mx:columns>
+			<mx:DataGridColumn headerText="Cargo" dataField="descricao"/>			
+		</mx:columns>
+	</mx:DataGrid>
+	<mx:TextInput x="73" y="48" id="pesquisaCargo"/>
+	<mx:Text x="10" y="50" text="Descrição"/>
+	<mx:Button x="258" y="50" label="Pesquisar" click="findAllCargo()"/>		
+</util:ModuleTitleWindow>

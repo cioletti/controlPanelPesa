@@ -1,0 +1,895 @@
+<mx:Application xmlns:mx="http://www.adobe.com/2006/mxml" layout="absolute"
+				horizontalAlign="center" paddingTop="0" verticalScrollPolicy="auto" horizontalScrollPolicy="auto" viewSourceURL="srcview/index.html" color="#000101" borderColor="#FFFFFF" width="100%" height="100%" 
+				creationComplete="init()" xmlns:print="org.print.*"
+				xmlns:jrv="com.jaspersoft.reports.viewer.*">
+	<mx:Script>
+		<![CDATA[
+			import bean.CargoBean;
+			import bean.CentroDeCustoBean;
+			import bean.FilialBean;
+			import bean.JobControlBean;
+			import bean.PerfilBean;
+			import bean.SistemaBean;
+			import bean.UsuarioBean;
+			
+			import componente.AlterPassword;
+			import componente.HierarquiaFuncionario;
+			import componente.PopUpCargo;
+			
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.core.IFlexDisplayObject;
+			import mx.events.CloseEvent;
+			import mx.events.ListEvent;
+			import mx.events.ValidationResultEvent;
+			import mx.managers.PopUpManager;
+			import mx.rpc.events.ResultEvent;
+			import mx.validators.Validator;
+			
+			import util.ProgressBarHelper;
+			private var urlLogin:String;
+			
+			[Bindable]
+			private var _usuarioBean:UsuarioBean;
+			[Bindable]
+			private var _usuarioSelecionadoBean:UsuarioBean = new UsuarioBean();
+			[Bindable]
+			private var _perfilList:ArrayCollection = new ArrayCollection();
+			private var _ccList:ArrayCollection = new ArrayCollection();
+			private var fornecedorList:ArrayCollection = new ArrayCollection();
+			private var myValidators:Array;
+			private var popUpCargo:PopUpCargo;
+			private var cargoBean:CargoBean;
+			
+			private function init():void{
+				passwordText.addEventListener(KeyboardEvent.KEY_DOWN,keyPressed);
+				gridPermissao.addEventListener("REMOVERPERMISSAO", removerPermissao);
+				gridPesquisa.addEventListener("REMOVERUSUARIO", removerUsuario);
+				myValidators = new Array();
+				myValidators.push(campoNome);
+				myValidators.push(campoCargo);
+				myValidators.push(campoLogin);
+				myValidators.push(campoEmail);
+				myValidators.push(campoTelefone);
+				myValidators.push(campoEmail);
+				myValidators.push(campoSenha);
+				myValidators.push(campoFilialCbx);
+				myValidators.push(campoSistemaCbx);
+				myValidators.push(campoPerfilCbx);
+				myValidators.push(campoCpf); 
+				myValidators.push(campoEstimateBy); 
+				myValidators.push(campoTurnoCbx); 
+				
+				serviceController.getUrlLogintServer();
+				
+			}
+			
+			private function keyPressed(evt:KeyboardEvent):void{
+				if(userText.text != "" && passwordText.text != ""){
+					if(evt.keyCode == 13){
+						loginUser();
+					}
+					
+				}
+			}
+			
+			
+			private function removerPermissao(event:Event):void{
+				var sistema:SistemaBean = SistemaBean(gridPermissao.selectedItem);
+				serviceController.removerPerfilSistema(_usuarioSelecionadoBean.matricula, sistema.id, sistema.perfilBean.id);
+			}
+			private function removerUsuario(event:Event):void{
+				var usuario:UsuarioBean = UsuarioBean(gridPesquisa.selectedItem);
+				serviceController.removerUsuario(usuario.matricula);
+			}
+			
+			private function onResultLoginUser(event:ResultEvent):void{
+				if(event.result != null){
+					_usuarioBean = UsuarioBean(event.result);
+					if(_usuarioBean.isInterno == 'N'){
+						resizeCanvas();
+						configurarTab();
+					}else{
+						var uv:URLVariables = new URLVariables();
+						uv.matricula = _usuarioBean.login;
+						uv.senha = _usuarioBean.senha;
+						
+						var url:URLRequest = new URLRequest(_usuarioBean.urlExterno);
+						url.method = "POST";
+						url.data = uv;
+						navigateToURL(url,"_self");
+						serviceController.invalidarSessao();
+						return;
+					} 
+					userText.text = "";
+					passwordText.text = "";
+					serviceController.getUrlLogintServer();
+					serviceController.findAllFilial();
+					serviceController.findAllSistemas(null);
+					serviceController.findAllJobControl();
+				}else{
+					Alert.show("Login ou senha inválidos!", "Alerta");
+					//reloadJcaptcha();
+				}
+			}
+			private function configurarTab():void{
+				var listPermissao:ArrayCollection = _usuarioBean.sistemaList;
+				var isAdm = false;
+				for(var i:int=0; i < listPermissao.length; i++){
+					var sistema:SistemaBean = SistemaBean(listPermissao.getItemAt(i));
+					if(sistema.perfilBean.sigla == 'ADM' && sistema.sigla == 'PDC'){
+						isAdm = true;
+						return;
+					}
+				}
+				if(!isAdm){
+					var numChildren:int = tabNavigator.numChildren;
+					if(numChildren > 1){
+						tabNavigator.removeChildAt(0);
+					}
+					return;
+				}
+			}
+			
+			private function loginUser():void{
+				serviceController.loginUsuario(userText.text, passwordText.text);	
+			}
+			
+			private function resizeCanvas():void
+			{
+				loginCanvas.height = 0;
+				loginCanvas.width = 0;
+				
+				painelCanvas.percentHeight = 100;
+				painelCanvas.percentWidth = 100;
+				logout.visible = true;
+				alterSenha.visible = true;
+			}
+			private function resizeCanvasLogin():void
+			{
+				loginCanvas.percentHeight = 100;
+				loginCanvas.percentWidth = 100;
+				
+				painelCanvas.percentHeight = 0;
+				painelCanvas.percentWidth = 0;
+				logout.visible = false;
+				alterSenha.visible = false;
+			}
+			private function onResultGetUrlLogintServer(event:ResultEvent):void{
+				urlLogin = String(event.result);
+				serviceController.verificarLogin();
+			} 
+			private function onResultFindAllCentroDeCusto(event:ResultEvent):void{
+				ccCbx.dataProvider = ArrayCollection(event.result);
+			} 
+//			private function onResultFindAllCargos(event:ResultEvent):void{
+//				cargoCbx.dataProvider = ArrayCollection(event.result);
+//			} 
+			private function onResultVerificarLogin(event:ResultEvent):void{
+				if(event.result != null){
+					_usuarioBean = UsuarioBean(event.result);
+					usuarioLogadoText.text = _usuarioBean.nome;
+					resizeCanvas();
+					serviceController.findAllFilial();
+					serviceController.findAllSistemas(null);
+					//serviceController.findAllCargos();
+					serviceController.findAllJobControl();
+					configurarTab();
+				}
+			} 
+			[Bindable]
+			private var sistemaList:ArrayCollection = new ArrayCollection();
+
+			private function onResultFindAllSistemas(event:ResultEvent):void{
+				sistemaList.removeAll();
+				sistemaList.addAll(ArrayCollection(event.result));
+				serviceController.findAllCentroDeCusto();
+			} 
+			private function onResultFindAllFilial(event:ResultEvent):void{
+				filialCbx.dataProvider = ArrayCollection(event.result);
+			} 
+			private function onResultRemoverPerfilSistema(event:ResultEvent):void{
+				if(Boolean(event.result) == true){
+					Alert.show("Permissão removida com sucesso!", "Alerta");
+					serviceController.findAllSistemas(_usuarioSelecionadoBean.matricula);
+					ArrayCollection(gridPermissao.dataProvider).removeItemAt(gridPermissao.selectedIndex);
+					jcForm.visible = false;
+					jcForm.includeInLayout = false;	
+					jobControlCbx.selectedIndex = -1;
+				}else{
+					Alert.show("Não foi possível remover Permissão!", "Alerta");
+				}
+			} 
+			private function onResultRemoverUsuario(event:ResultEvent):void{
+				if(Boolean(event.result) == true){
+					Alert.show("Usuário removido com sucesso!", "Alerta");
+					ArrayCollection(gridPesquisa.dataProvider).removeItemAt(gridPesquisa.selectedIndex);
+					limparCampos();
+				}else{
+					Alert.show("Não foi possível remover Usuário!", "Alerta");
+				}
+			} 
+			private function onResultFindAllUsersByName(event:ResultEvent):void{
+				gridPesquisa.dataProvider = ArrayCollection(event.result);
+			} 
+			private function onResultSaveUser(event:ResultEvent):void{
+				if(event.result == null){
+					Alert.show("Não foi possível salvar Usuário! \nA matrícula ou a matrícula pode estar cadastrada para outro usuário.", "Alerta");
+				}else{
+					gridPesquisa.dataProvider = null;
+					_usuarioSelecionadoBean = UsuarioBean(event.result);
+					serviceController.findAllSistemas(_usuarioSelecionadoBean.matricula);
+					_perfilList.removeAll();
+					gridPermissao.dataProvider = _usuarioSelecionadoBean.sistemaList;
+					Alert.show("Usuário salvo com sucesso!", "Alerta");
+					matriculaText.enabled = false;
+					ccForm.visible = false;
+					jcForm.visible = false;
+					jcForm.includeInLayout = false;	
+					jobControlCbx.selectedIndex = -1;
+					tipoVeiculoform.visible = false;
+					tipoVeiculoform.includeInLayout = false;
+					tipoVeiculoform.enabled = false;
+					tipoVeiculoCbx.selectedIndex = -1;
+					
+					codigoVeiculo.text = "";
+					codigoVeiculoForm.visible = false;
+					codigoVeiculoForm.includeInLayout = false;
+					codigoVeiculoForm.enabled = false;
+					
+					//placaText.text = "";
+					
+				}
+			} 
+			private function onResultFindAllPerfil(event:ResultEvent):void{
+				_perfilList.removeAll();
+				_perfilList.addAll(ArrayCollection(event.result));
+			} 
+			
+			private function pesquisarUsuario():void{
+				serviceController.findAllUsersByName(nomeUsuarioPesquisa.text);
+			}
+			
+
+			protected function sistemaCbx_changeHandler(event:ListEvent):void
+			{
+				fornecedorForm.visible = false;
+				fornecedorForm.includeInLayout= false;
+				fornecedorCbx.selectedIndex = -1;
+				
+				tipoVeiculoform.visible = false;
+				tipoVeiculoform.includeInLayout = false;
+				tipoVeiculoform.enabled = false;
+				
+				codigoVeiculoForm.visible = false;
+				codigoVeiculoForm.includeInLayout = false;
+				codigoVeiculoForm.enabled = false;
+				
+				
+				ccForm.visible = false;
+				if(_usuarioSelecionadoBean == null){
+					serviceController.findAllPerfil(null, SistemaBean(sistemaCbx.selectedItem).sigla);
+				}else{
+					serviceController.findAllPerfil(_usuarioSelecionadoBean.matricula, SistemaBean(sistemaCbx.selectedItem).sigla);
+				}
+				
+//				placaForm.includeInLayout = false;
+//				placaForm.visible = false;
+			}
+			
+			private function limparCampos():void{
+					fornecedorForm.visible = false;
+					fornecedorForm.includeInLayout= false;
+					placaText.text = "";
+					novo();
+			}
+			
+			private function novo():void{
+				tipoVeiculoform.enabled = false;
+				codigoVeiculoForm.enabled = false;
+				tipoVeiculoform.visible = false;
+				codigoVeiculoForm.visible = false;
+				tipoVeiculoform.includeInLayout = false;
+				codigoVeiculoForm.includeInLayout = false;
+				
+				ccForm.visible = false
+				matriculaText.enabled = true;
+				_usuarioSelecionadoBean = new UsuarioBean();
+				serviceController.findAllSistemas(null);
+				nomeText.text = '';
+				//popUpCargo.cargoBean = new CargoBean();
+				cargoTxt.text = "";
+				matriculaText.text = '';
+				telefoneText.text = '';
+				emailText.text = '';
+				senhaText.text = '';
+				loginText.text = '';
+				cpfText.text = '';
+				filialCbx.selectedIndex = -1;
+				sistemaCbx.selectedIndex = -1;
+				perfilCbx.selectedIndex = -1;
+				gridPermissao.dataProvider = null;
+				jcForm.visible = false;
+				jcForm.includeInLayout = false;	
+				jobControlCbx.selectedIndex = -1;
+				turnoCbx.selectedIndex = -1;
+				fornecedorCbx.selectedIndex = -1;
+				estimateBy.text = "";
+			
+			}
+			
+			private function doubleClickGridPesquisa():void{
+				
+				if(gridPesquisa.selectedItem != null){
+					
+					matriculaText.enabled = false;
+					_usuarioSelecionadoBean = UsuarioBean(gridPesquisa.selectedItem);
+					nomeText.text = _usuarioSelecionadoBean.nome;
+					//this.selectedCargoCbx();
+					cargoTxt.text = _usuarioSelecionadoBean.cargo;
+					loginText.text = _usuarioSelecionadoBean.login;
+					matriculaText.text = _usuarioSelecionadoBean.matricula;
+					telefoneText.text = _usuarioSelecionadoBean.telefone;
+					emailText.text = _usuarioSelecionadoBean.email;
+					senhaText.text = _usuarioSelecionadoBean.senha;
+					cpfText.text = _usuarioSelecionadoBean.cpf;
+					estimateBy.text = _usuarioSelecionadoBean.estimateBy;
+					placaText.text = _usuarioSelecionadoBean.placaVeiculo;
+					selectedFilialCbx();
+					selectedSistemaGroup();
+					selectedPerfilGroup();
+					selectedCentroCusto();
+					gridPermissao.dataProvider = _usuarioSelecionadoBean.sistemaList;
+					serviceController.findAllSistemas(_usuarioSelecionadoBean.matricula);
+					jcForm.visible = false;
+					jcForm.includeInLayout = false;
+					//turnoForm.includeInLayout = false;
+					//turnoForm.visible = false;
+					jobControlCbx.selectedIndex = -1;
+					this.fixTurnoCbx();
+					cargoBean = new CargoBean();
+					cargoBean.id =  _usuarioSelecionadoBean.idCargo;
+					cargoBean.descricao = _usuarioSelecionadoBean.cargo;
+					
+				}
+			}
+			
+//			private function selectedCargoCbx():void{
+//				cargoCbx.selectedIndex = -1;
+//				var cargoList:ArrayCollection = ArrayCollection(cargoCbx.dataProvider);
+//				for(var i:int=0; i < cargoList.length; i++){
+//					var c:CargoBean = CargoBean(cargoList.getItemAt(i));
+//					if(_usuarioSelecionadoBean.cargo == c.descricao){
+//						cargoCbx.selectedIndex = i;
+//						break;
+//					}
+//				}
+//			}
+			
+						private function fixTurnoCbx():void{
+							turnoCbx.selectedIndex = -1;
+							var turnoList:ArrayCollection = ArrayCollection(turnoCbx.dataProvider);
+							for(var i:int=0; i < turnoList.length; i++){
+								if(_usuarioSelecionadoBean.turno == turnoList.getItemAt(i).data){
+									turnoCbx.selectedIndex = i;
+									break;
+								}
+							}
+						}
+			
+			private function selectedFilialCbx():void{
+				var filialList:ArrayCollection = ArrayCollection(filialCbx.dataProvider);
+				for(var i:int=0; i < filialList.length; i++){
+					var f:FilialBean = FilialBean(filialList.getItemAt(i));
+					if(_usuarioSelecionadoBean.filial == f.id){
+						filialCbx.selectedIndex = i;
+						break;
+					}
+				}
+			}
+			
+			private function selectedSistemaGroup():void{
+				var sisList:ArrayCollection = ArrayCollection(sistemaCbx.dataProvider);
+				for(var i:int=0; i < sisList.length; i++){
+					var s:SistemaBean = SistemaBean(sisList.getItemAt(i));
+					if(_usuarioSelecionadoBean.idSistema == s.id){
+						sistemaCbx.selectedIndex = i;
+						break;
+					}
+				}
+			}
+			
+			private function selectedPerfilGroup():void{
+				var perfilList:ArrayCollection = ArrayCollection(perfilCbx.dataProvider);
+				for(var i:int=0; i < perfilList.length; i++){
+					var p:PerfilBean = PerfilBean(perfilList.getItemAt(i));
+					if(_usuarioSelecionadoBean.idPerfil == p.id){
+						perfilCbx.selectedIndex = i;
+						break;
+					}
+				}
+				perfilList.removeAll();
+				perfilList = null;
+			}
+			
+			private function selectedCentroCusto():void{
+				var ccList:ArrayCollection = ArrayCollection(ccCbx.dataProvider);
+				for(var i:int=0; i < ccList.length; i++){
+					var cc:CentroDeCustoBean = CentroDeCustoBean(ccList.getItemAt(i));
+					if(_usuarioSelecionadoBean.idCentroCusto == cc.id){
+						ccForm.visible = true;
+						ccCbx.selectedIndex = i;
+						break;
+					}
+					
+				}
+				ccForm.visible = false;
+			}
+			
+			private function saveUser():void{
+				var validatorErrorArray:Array = Validator.validateAll(myValidators);
+				var isValidForm:Boolean = validatorErrorArray.length == 0;
+				
+				if (isValidForm) {
+					if((PerfilBean(perfilCbx.selectedItem).sigla == 'SUPER' || PerfilBean(perfilCbx.selectedItem).sigla == 'USUTEC') && SistemaBean(sistemaCbx.selectedItem).sigla == 'APH' ){
+//						if(turnoCbx.selectedItem == null){
+//							Alert.show("O campo Turno é obrigatório!", "Alerta");
+//							return;
+//						}
+						if(jobControlCbx.selectedItem == null){
+							Alert.show("O campo Job Control é obrigatório!", "Alerta");
+							return;
+						}
+					}
+					if(PerfilBean(perfilCbx.selectedItem).sigla == 'SUPER' && SistemaBean(sistemaCbx.selectedItem).sigla == 'GE' && jobControlCbx.selectedItem == null){
+						Alert.show("O campo Job Control é obrigatório!", "Alerta");
+						return;
+					}
+					if(((SistemaBean(sistemaCbx.selectedItem).sigla == 'PMP' || SistemaBean(sistemaCbx.selectedItem).sigla == 'RENPMP' ) && PerfilBean(perfilCbx.selectedItem).sigla == 'USUTEC') ||
+						(SistemaBean(sistemaCbx.selectedItem).sigla == 'SC' && PerfilBean(perfilCbx.selectedItem).sigla == 'USUTEC')){
+						if(placaText.text == ""){
+							Alert.show("O campo placa do veículo é obrigatório.","Alerta!");
+							return;
+						}else if(codigoVeiculo.text == ""){
+							Alert.show("O campo código do veículo é obrigatório.","Alerta!");
+							return;
+						}else if(tipoVeiculoCbx.selectedIndex == -1) {
+							Alert.show("O campo tipo do veículo é obrigatório.","Alerta!");
+							return;
+						}
+					}
+					_usuarioSelecionadoBean.placaVeiculo = placaText.text.toUpperCase();
+					_usuarioSelecionadoBean.nome = nomeText.text;
+					_usuarioSelecionadoBean.matricula = matriculaText.text;
+					_usuarioSelecionadoBean.idCargo = cargoBean.id;
+					_usuarioSelecionadoBean.cargo = cargoBean.descricao;
+					_usuarioSelecionadoBean.telefone = telefoneText.text;
+					_usuarioSelecionadoBean.email = emailText.text;
+					_usuarioSelecionadoBean.senha = senhaText.text;
+					_usuarioSelecionadoBean.filial = FilialBean(filialCbx.selectedItem).id;
+					_usuarioSelecionadoBean.idSistema = SistemaBean(sistemaCbx.selectedItem).id;
+					_usuarioSelecionadoBean.idPerfil = PerfilBean(perfilCbx.selectedItem).id;
+					_usuarioSelecionadoBean.login = loginText.text;
+					_usuarioSelecionadoBean.cpf = cpfText.text;
+					_usuarioSelecionadoBean.estimateBy = estimateBy.text;
+					_usuarioSelecionadoBean.turno = Number(turnoCbx.selectedItem.data);
+					if(tipoVeiculoCbx.selectedIndex != -1 && codigoVeiculo.text != ''){
+						_usuarioSelecionadoBean.tipoVeiculo = String(tipoVeiculoCbx.selectedItem.data);
+						_usuarioSelecionadoBean.codigoVeiculo = codigoVeiculo.text;
+					}
+					if(ccCbx.selectedItem != null){
+						_usuarioSelecionadoBean.idCentroCusto = CentroDeCustoBean(ccCbx.selectedItem).id;
+					}
+					if(jobControlCbx.selectedItem != null){
+						_usuarioSelecionadoBean.jobControl = JobControlBean(jobControlCbx.selectedItem).descricao;
+					}
+					if(perfilCbx.selectedItem.sigla == 'FORN'){
+						_usuarioSelecionadoBean.idFornecedor = fornecedorCbx.selectedItem.id
+					}
+					serviceController.saveUser(_usuarioSelecionadoBean);
+				}else {
+					var err:ValidationResultEvent;
+					var errorMessageArray:Array = [];
+					for each (err in validatorErrorArray) {
+						var errField:String = FormItem(err.currentTarget.source.parent).label
+						errorMessageArray.push(errField + ": Este campo é obrigatório.");
+					}
+					Alert.show(errorMessageArray.join("\n\n"), "Invalid form...", Alert.OK);
+				}
+			}
+			
+			private function viewPanel():void{
+				var vBox:VBox = new VBox();
+				vBox.percentWidth = 100;
+				vBox.setStyle('horizontalAlign','center');
+				controlPanelCanvas.addChild(vBox)
+				for(var i:int=0; i < _usuarioBean.sistemaList.length; i++){
+					var sistema:SistemaBean = SistemaBean(_usuarioBean.sistemaList.getItemAt(i));
+						var hBox:HBox = new HBox();
+						for(var j:int=0; j < 4; j++){
+							if(sistema.sigla != 'PDC'){
+								hBox.percentWidth = 100;
+								hBox.setStyle('horizontalAlign','center');
+								var img:Image = new Image();
+								img.source = sistema.img;
+								img.buttonMode = true;
+								img.toolTip = sistema.descricao;
+								img.data = sistema;
+								img.addEventListener(MouseEvent.CLICK, redirectSistema);
+								hBox.addChild(img);
+								vBox.addChild(hBox);
+							}else if(j > 0){
+								j--;
+							}
+							if(j < 3){
+								i++;
+							}
+							if(i == _usuarioBean.sistemaList.length){
+								return;
+							}else{
+								sistema = SistemaBean(_usuarioBean.sistemaList.getItemAt(i));
+							}
+					}
+				}
+			}
+			
+			private function redirectSistema(event:MouseEvent):void{
+				ProgressBarHelper.openProgressBar(this);
+				//controlPanelCanvas.removeAllChildren();
+				var sistema:SistemaBean = SistemaBean(event.currentTarget.data);
+				var uv:URLVariables = new URLVariables();
+				uv.matricula = _usuarioBean.login;
+				uv.senha = _usuarioBean.senha;
+				
+				var url:URLRequest = new URLRequest(sistema.url);
+				url.method = "POST";
+				url.data = uv;
+				navigateToURL(url,"_self");
+				serviceController.invalidarSessao();
+			}
+			private function invalidarSessao():void{
+				serviceController.invalidarSessao();
+				var uv:URLVariables = new URLVariables();
+				
+				
+				var url:URLRequest = new URLRequest(urlLogin);
+				url.method = "POST";
+				
+				navigateToURL(url,"_self");
+			}
+			
+			public function popupHierarquiaFuncionario():void{				
+				var hierarquia:HierarquiaFuncionario = new HierarquiaFuncionario();
+				hierarquia.addEventListener(CloseEvent.CLOSE, removePopUpHierarquiaFuncionario);
+				PopUpManager.addPopUp(hierarquia,this,true);
+				PopUpManager.centerPopUp(hierarquia)
+				hierarquia.init(urlLogin, _usuarioSelecionadoBean);
+				hierarquia.width = 1000;
+				hierarquia.height = 600;									
+			}
+			
+			private function removePopUpHierarquiaFuncionario(obj:CloseEvent):void{
+				PopUpManager.removePopUp(obj.currentTarget as IFlexDisplayObject);
+			}
+			public function popupAlterPassword():void{				
+				var alterPassword:AlterPassword = new AlterPassword();
+				alterPassword.addEventListener(CloseEvent.CLOSE, removePopUpAlterSenha);
+				PopUpManager.addPopUp(alterPassword,this,true);
+				PopUpManager.centerPopUp(alterPassword)
+				alterPassword.init(urlLogin);
+				alterPassword.percentWidth = 500;
+				alterPassword.percentHeight = 300;									
+			}
+			
+			private function removePopUpAlterSenha(obj:CloseEvent):void{
+				PopUpManager.removePopUp(obj.currentTarget as IFlexDisplayObject);
+			}
+			
+			private function change_cbx():void{
+//				if(PerfilBean(perfilCbx.selectedItem).sigla == 'GAOS' || PerfilBean(perfilCbx.selectedItem).sigla == 'GEROF'){
+//					ccForm.visible = true;
+//				}else{
+//					ccForm.visible = false;
+//				}
+//				if(SistemaBean(sistemaCbx.selectedItem).sigla == 'PMP' && PerfilBean(perfilCbx.selectedItem).sigla == 'USUTEC'){
+//					placaForm.includeInLayout = true;
+//					placaForm.visible = true;
+//				}else{
+//					placaForm.includeInLayout = false;
+//					placaForm.visible = false;
+//				}
+				fornecedorForm.visible = false;
+				fornecedorForm.includeInLayout = false;
+				fornecedorCbx.selectedIndex = -1;
+				
+				tipoVeiculoform.visible = false;
+				tipoVeiculoform.includeInLayout = false;
+				tipoVeiculoform.enabled = false;
+				tipoVeiculoCbx.selectedIndex = -1;
+				
+				codigoVeiculo.text = "";
+				codigoVeiculoForm.visible = false;
+				codigoVeiculoForm.includeInLayout = false;
+				codigoVeiculoForm.enabled = false;
+				
+				if(PerfilBean(perfilCbx.selectedItem).sigla == 'SUPER' && SistemaBean(sistemaCbx.selectedItem).sigla == 'GE'){
+					jcForm.visible = true;
+					jcForm.includeInLayout = true;
+					//turnoForm.includeInLayout = false;
+					//turnoForm.visible = false;
+				}else if((PerfilBean(perfilCbx.selectedItem).sigla == 'SUPER' || PerfilBean(perfilCbx.selectedItem).sigla == 'USUTEC') && SistemaBean(sistemaCbx.selectedItem).sigla == 'APH'){
+					jcForm.visible = true;
+					jcForm.includeInLayout = true;
+					//turnoForm.includeInLayout = true;
+					//turnoForm.visible = true;
+				}else if(PerfilBean(perfilCbx.selectedItem).sigla == 'FORN'){
+					fornecedorForm.visible = true;
+					fornecedorForm.includeInLayout = true;
+					serviceController.findAllFornecedorServTerceiro();
+				}else if(PerfilBean(perfilCbx.selectedItem).sigla == 'USUTEC' &&  (SistemaBean(sistemaCbx.selectedItem).sigla == 'SC' || SistemaBean(sistemaCbx.selectedItem).sigla == 'PMP' || SistemaBean(sistemaCbx.selectedItem).sigla == 'RENPMP' )){
+					tipoVeiculoform.visible = true;
+					tipoVeiculoform.includeInLayout = true;
+					tipoVeiculoform.enabled = true;
+					
+					codigoVeiculoForm.visible = true;
+					codigoVeiculoForm.includeInLayout = true;
+					codigoVeiculoForm.enabled = true;
+				}else{
+					jcForm.visible = false;
+					jcForm.includeInLayout = false;
+					//turnoForm.includeInLayout = false;
+					//turnoForm.visible = false;
+				}
+			}
+			
+			private function onResultFindAllJobControl(event:ResultEvent):void{
+				jobControlCbx.dataProvider = event.result;
+			}
+			
+			private function fixJobControl(jobControl:String):void{
+				jobControlCbx.selectedIndex = -1;
+				var jcList:ArrayCollection = ArrayCollection(jobControlCbx.dataProvider);
+				for(var i:int=0; i < jcList.length; i++){
+					var jc:JobControlBean = JobControlBean(jcList.getItemAt(i));
+					if(jc.descricao == jobControl){
+						jobControlCbx.selectedIndex = i;
+						break;
+					}
+				}
+			}
+			
+			protected function cargoBtn_clickHandler(event:MouseEvent):void
+			{
+				
+				popUpCargo = new PopUpCargo();
+				popUpCargo.addEventListener(CloseEvent.CLOSE, removePopUpCargo);
+				PopUpManager.addPopUp(popUpCargo,this,true);
+				PopUpManager.centerPopUp(popUpCargo)
+				popUpCargo.init(urlLogin);	
+			}
+			private function removePopUpCargo(obj:CloseEvent):void{
+				PopUpManager.removePopUp(obj.currentTarget as IFlexDisplayObject);
+				if (popUpCargo.cargoBean != null){
+					cargoBean = new CargoBean();
+					cargoBean = popUpCargo.cargoBean;
+					cargoTxt.text = cargoBean.descricao;
+					//serviceController.findCargosDiferentBy(popUpCargo.cargoBean.id);
+				}
+			}
+			
+			private function onResultFindAllFornecedorServTerceiro(event:ResultEvent):void{
+				fornecedorList.removeAll();
+				fornecedorList.addAll(ArrayCollection(event.result));
+				fornecedorCbx.dataProvider = fornecedorList;
+			} 
+			
+		]]>
+	</mx:Script>
+	<mx:Style source="pmpCSS.css"/>
+	<mx:ArrayCollection id="comboTurno">
+		<mx:Object label="1 - Dia" data="1" />
+		<mx:Object label="2 - Noite" data="2" />
+	</mx:ArrayCollection>
+	<mx:ArrayCollection id="comboVeiculo">
+		<mx:Object label="Caminhão" data="T" />
+		<mx:Object label="Carro" data="C" />
+		<mx:Object label="Doblo" data="D" />
+		<mx:Object label="Ducato" data="U" />
+	</mx:ArrayCollection>
+	
+	<mx:StringValidator id="campoNome" requiredFieldError="Este campo  obrigatório!" required="true" source="{nomeText}" property="text" />
+	<mx:StringValidator id="campoMatricula" requiredFieldError="Este campo  obrigatório!" required="true" source="{matriculaText}" property="text" />
+	<mx:StringValidator id="campoLogin" requiredFieldError="Este campo  obrigatório!" required="true" source="{loginText}" property="text" />
+	<!--mx:StringValidator id="campoCargo" requiredFieldError="Este campo  obrigatório!" required="true" source="{cargo}" property="text" /-->
+	<mx:StringValidator id="campoCargo" source="{cargoTxt}" requiredFieldError="Este campo  obrigatório!" required="true"  property="text" />
+	<mx:StringValidator id="campoTelefone" requiredFieldError="Este campo  obrigatório!" required="true" source="{telefoneText}" property="text" />
+	<mx:StringValidator id="campoEmail" requiredFieldError="Este campo  obrigatório!" required="true" source="{emailText}" property="text" />
+	<mx:StringValidator id="campoSenha" requiredFieldError="Este campo  obrigatório!" required="true" source="{senhaText}" property="text" />
+	<mx:StringValidator id="campoCpf" requiredFieldError="Este campo  obrigatório!" required="true" source="{cpfText}" property="text" />
+	<mx:StringValidator id="campoEstimateBy" requiredFieldError="Este campo  obrigatório!" required="true" source="{estimateBy}" property="text" />
+	<mx:NumberValidator id="campoFilialCbx" source="{filialCbx}" lowerThanMinError="Este campo  obrigatório." property="selectedIndex" minValue="0" />
+	<mx:NumberValidator id="campoSistemaCbx" source="{sistemaCbx}" lowerThanMinError="Este campo  obrigatório." property="selectedIndex" minValue="0" />
+	<mx:NumberValidator id="campoPerfilCbx" source="{perfilCbx}" lowerThanMinError="Este campo  obrigatório." property="selectedIndex" minValue="0" />
+	<mx:NumberValidator id="campoTurnoCbx" source="{turnoCbx}" lowerThanMinError="Este campo  obrigatório." property="selectedIndex" minValue="0" />
+	<mx:RemoteObject destination="service" invoke="{ProgressBarHelper.openProgressBar(this)}" id="serviceController" showBusyCursor="true" fault="ProgressBarHelper.erro(event, urlLogin);ProgressBarHelper.removeProgressBar()">
+		<mx:method name="loginUsuario" result="onResultLoginUser(event);ProgressBarHelper.removeProgressBar()" />
+		<mx:method name="getUrlLogintServer" result="onResultGetUrlLogintServer(event);ProgressBarHelper.removeProgressBar()" />
+		<mx:method name="findAllFilial" result="onResultFindAllFilial(event);ProgressBarHelper.removeProgressBar()" />
+		<mx:method name="findAllSistemas" result="onResultFindAllSistemas(event);ProgressBarHelper.removeProgressBar()" />
+		<mx:method name="findAllUsersByName" result="onResultFindAllUsersByName(event);ProgressBarHelper.removeProgressBar()" />
+		<mx:method name="findAllPerfil" result="onResultFindAllPerfil(event);ProgressBarHelper.removeProgressBar()" />
+		<mx:method name="saveUser" result="onResultSaveUser(event);ProgressBarHelper.removeProgressBar()" />
+		<mx:method name="removerPerfilSistema" result="onResultRemoverPerfilSistema(event);ProgressBarHelper.removeProgressBar()" />
+		<mx:method name="removerUsuario" result="onResultRemoverUsuario(event);ProgressBarHelper.removeProgressBar()" />
+		<mx:method name="verificarLogin" result="onResultVerificarLogin(event);ProgressBarHelper.removeProgressBar()" />
+		<mx:method name="invalidarSessao" result="ProgressBarHelper.removeProgressBar()" />
+		<mx:method name="importarPl" result="ProgressBarHelper.removeProgressBar()" />
+		<mx:method name="findAllCentroDeCusto" result="onResultFindAllCentroDeCusto(event);ProgressBarHelper.removeProgressBar()" />
+		<!--mx:method name="findAllCargos" result="onResultFindAllCargos(event);ProgressBarHelper.removeProgressBar()" /-->
+		<mx:method name="findAllJobControl" result="onResultFindAllJobControl(event);ProgressBarHelper.removeProgressBar()"/>
+		<mx:method name="findAllFornecedorServTerceiro" result="onResultFindAllFornecedorServTerceiro(event);ProgressBarHelper.removeProgressBar()" />
+	</mx:RemoteObject>
+	<mx:Canvas x="10" y="65" width="100%" height="100%" resizeEffect="resizeEffect" id="loginCanvas" backgroundColor="white">
+		<mx:VBox x="202.5" y="10" height="40%" width="60%">
+			
+			<mx:HBox width="100%" height="3%" horizontalAlign="center">
+				<mx:HRule width="403"/>
+			</mx:HBox>
+			<mx:HBox width="100%" height="30%">
+				<mx:VBox height="100%" width="60%">
+					<mx:HBox width="100%" height="16%" verticalAlign="middle" horizontalAlign="right">
+						<mx:Label text="Login"/>
+					</mx:HBox>
+					<mx:HBox width="100%" height="16%" verticalAlign="middle" horizontalAlign="right">
+						<mx:Label text="Password" />
+					</mx:HBox>
+				</mx:VBox>
+				<mx:VBox height="100%" width="100%">
+					<mx:HBox width="100%">
+						<mx:TextInput id="userText"/>
+					</mx:HBox>
+					<mx:HBox width="100%">
+						<mx:TextInput id="passwordText"  displayAsPassword="true"/>
+					</mx:HBox>
+					<mx:HBox width="100%" horizontalAlign="left">
+						<mx:Button label="Logar" id="loginUserPassword" click="loginUser()"/>
+						<!--mx:Button label="PL maquina" click="{serviceController.importarPl()}"/-->
+					</mx:HBox>
+				</mx:VBox>
+			</mx:HBox>
+			<mx:HBox width="100%" horizontalAlign="center">
+				<mx:HRule width="403" height="6"/>
+			</mx:HBox>
+		</mx:VBox>
+	</mx:Canvas>
+	<mx:Canvas x="0" y="65" width="0%" height="0%"   id="painelCanvas" backgroundColor="white">
+	<mx:TabNavigator width="100%" height="100%" id="tabNavigator" >
+		<mx:Canvas x="0" y="65" width="100%" label="Configuração de Usuário" height="100%" backgroundColor="white">
+			<mx:HBox x="0" y="-4" width="100%" height="320" horizontalAlign="center">
+				<mx:Form height="272" width="100%" >
+					<mx:FormItem label="Nome" required="true" width="332">
+						<mx:TextInput width="212" id="nomeText" maxChars="60"/>
+						
+					</mx:FormItem>
+					<mx:FormItem label="Cargo"  required="true"  width="95%" borderStyle="solid" cornerRadius="5" borderColor="#FFCC33">
+						<mx:TextInput id="cargoTxt" enabled="false" width="100%"/> 
+						<mx:Button label="Pesquisar" id="cargoBtn" click="cargoBtn_clickHandler(event)"/>
+					</mx:FormItem>
+					<mx:FormItem label="Telefone" required="true" width="351">
+						<mx:TextInput width="142" id="telefoneText" maxChars="18"/>
+						
+					</mx:FormItem>
+					<mx:FormItem label="E-mail" required="true" width="339">
+						<mx:TextInput width="212" id="emailText" maxChars="50"/>
+						
+					</mx:FormItem>
+					<mx:FormItem label="Matricula" required="true" width="295">
+						<mx:TextInput width="144" id="matriculaText" maxChars="15"/>
+					</mx:FormItem>
+					<mx:FormItem label="Matrícula DBS" required="true" width="295">
+						<mx:TextInput width="144" id="loginText" maxChars="100"/>
+					</mx:FormItem>
+					<mx:FormItem label="senha" required="true" width="288">
+						<mx:TextInput width="144" id="senhaText" displayAsPassword="true" maxChars="80"/>
+					</mx:FormItem>
+				</mx:Form>
+				<mx:Form  height="100%"  width="100%">
+					<mx:FormItem label="Estimate By" required="true" width="288">
+						<mx:TextInput width="144" id="estimateBy" maxChars="3"/>
+					</mx:FormItem>
+					<mx:FormItem label="CPF" required="true" width="288">
+						<mx:TextInput width="144" id="cpfText" maxChars="40"/>
+					</mx:FormItem>
+					<mx:FormItem label="Filial" required="true" >
+						<mx:ComboBox editable="true" id="filialCbx" labelField="descricao" prompt="Selecione"></mx:ComboBox>
+					</mx:FormItem>
+					<mx:FormItem label="Sistema" required="true" >
+						<mx:ComboBox editable="true" id="sistemaCbx" dataProvider="{sistemaList}" labelField="descricao" prompt="Selecione" change="sistemaCbx_changeHandler(event)"></mx:ComboBox>
+					</mx:FormItem>
+					<mx:FormItem label="Perfil" required="true" >
+						<mx:ComboBox editable="true" id="perfilCbx" dataProvider="{_perfilList}" labelField="descricao" change="change_cbx()" prompt="Selecione"></mx:ComboBox>
+					</mx:FormItem>
+					<mx:FormItem label="Tipo veículo" required="true" id="tipoVeiculoform" visible="false" enabled="true" includeInLayout="false">
+						<mx:ComboBox editable="true" id="tipoVeiculoCbx" dataProvider="{comboVeiculo}" prompt="Selecione"></mx:ComboBox>
+					</mx:FormItem>
+					<mx:FormItem label="Código Veículo" required="true" id="codigoVeiculoForm" visible="false" enabled="true" includeInLayout="false">
+						<mx:TextInput width="144" id="codigoVeiculo" maxChars="10"/>
+					</mx:FormItem>
+					<mx:FormItem label="Fornecedor" required="true" id="fornecedorForm" includeInLayout="false" visible="false">
+						<mx:ComboBox editable="true" id="fornecedorCbx" dataProvider="{fornecedorList}" labelField="descricao" prompt="Selecione"></mx:ComboBox>
+					</mx:FormItem>
+					<mx:FormItem label="Turno" required="true" id="turnoForm" includeInLayout="true" visible="true">
+						<mx:ComboBox editable="true" id="turnoCbx" dataProvider="{comboTurno}" labelField="label" prompt="Selecione"></mx:ComboBox>
+					</mx:FormItem>
+					<mx:FormItem label="Placa Veículo" required="false" id="placaForm">
+						<mx:TextInput width="144" id="placaText" maxChars="10"/>
+					</mx:FormItem>
+					<mx:FormItem label="Job Control" includeInLayout="false" required="true" id="jcForm" visible="false">
+						<mx:ComboBox width="112" x="258" enabled="true" y="113" prompt="Selecione"  id="jobControlCbx" labelField="descricao" selectedIndex="-1"></mx:ComboBox>
+					</mx:FormItem>
+					<mx:FormItem label="Centro de Custo" required="true" visible="false" id="ccForm">
+						<mx:ComboBox editable="true"  id="ccCbx" dataProvider="{_ccList}" labelField="descricao" prompt="Selecione"></mx:ComboBox>
+					</mx:FormItem>
+				</mx:Form>
+				<mx:DataGrid height="241" width="100%" id="gridPermissao">
+					<mx:columns>
+						<mx:DataGridColumn headerText="Sistema" dataField="descricao"/>
+						<mx:DataGridColumn headerText="Perfil" dataField="descricaoPerfil"/>
+						<mx:DataGridColumn headerText="JobControl" dataField="jobControl"/>
+						<mx:DataGridColumn headerText="Tipo&#13;Veiculo" dataField="tipoVeiculo"/>
+						<mx:DataGridColumn headerText="Cod.&#13;Veiculo" dataField="codigoVeiculo"/>
+						<mx:DataGridColumn headerText="Excluir">
+						
+							<mx:itemRenderer> 
+								<mx:Component>
+									<mx:VBox verticalGap="2" horizontalAlign="center">
+										<mx:Image source="img/remover.png" width="15" buttonMode="true" height="15" click="{dispatchEvent(new Event('REMOVERPERMISSAO', true))}"/>
+									</mx:VBox>
+								</mx:Component> 
+							</mx:itemRenderer>
+						</mx:DataGridColumn>	
+					</mx:columns>
+				</mx:DataGrid>
+			</mx:HBox>
+			<mx:HBox width="100%" horizontalAlign="center" x="0" y="324">
+				<mx:Button label="Salvar" click="saveUser()"/>
+				<mx:Button label="Novo" click="limparCampos()"/>
+				<mx:Button label="Hierarquia de Funcionário" click="popupHierarquiaFuncionario()" visible="{_usuarioSelecionadoBean.matricula != null &amp;&amp; _usuarioSelecionadoBean.matricula != ''}"/>
+			</mx:HBox>
+			<mx:HBox y="380" width="100%" height="100%" horizontalAlign="center" >
+				<mx:DataGrid x="0"  width="100%" height="100%" paddingRight="50" id="gridPesquisa" doubleClickEnabled="true" doubleClick="doubleClickGridPesquisa()">
+					<mx:columns>
+						<mx:DataGridColumn headerText="Nome" dataField="nome"/>
+						<mx:DataGridColumn headerText="Filial" dataField="filialStr"/>
+						<mx:DataGridColumn headerText="Turno" dataField="turno"/>
+						<mx:DataGridColumn headerText="Excluir">
+							<mx:itemRenderer> 
+								<mx:Component>
+									<mx:VBox verticalGap="2" horizontalAlign="center">
+										<mx:Image source="img/remover.png" width="15" buttonMode="true" height="15" click="{dispatchEvent(new Event('REMOVERUSUARIO', true))}"/>
+									</mx:VBox>
+								</mx:Component> 
+							</mx:itemRenderer>
+						</mx:DataGridColumn>
+					</mx:columns>
+				</mx:DataGrid>
+			</mx:HBox>	
+			<mx:TextInput x="45" y="350" id="nomeUsuarioPesquisa" width="159"/>
+			<mx:Label x="0" y="352" text="Nome"/>
+			<mx:Button x="212" y="350" label="Pesquisar" click="pesquisarUsuario()"/>
+		</mx:Canvas>
+		<mx:Canvas x="0" y="65" width="100%" label="Painel de Controle" id="controlPanelCanvas" creationComplete="viewPanel()" height="100%" backgroundColor="white">
+			
+		</mx:Canvas>	
+	</mx:TabNavigator>	
+	</mx:Canvas>
+	<mx:ApplicationControlBar x="0" y="0" width="100%" height="50">
+		<mx:Image width="140" source="img/Logo.png" height="43"/>
+		<mx:Label text="V2.3"/>
+		<mx:HBox width="65%" horizontalAlign="right" verticalAlign="middle">
+			<mx:Label text="" id="usuarioLogadoText"/>
+			<mx:Image source="img/password.png" visible="false" buttonMode="true" id="alterSenha" toolTip="Alterar Senha" click="popupAlterPassword()" height="32" width="32"/>
+			<mx:Image source="img/logout.png" visible="false" buttonMode="true" id="logout" toolTip="Sair do Sistema" click="invalidarSessao()" height="32" width="32"/>
+		</mx:HBox>
+	</mx:ApplicationControlBar>
+</mx:Application>

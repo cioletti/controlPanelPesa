@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<util:ModuleTitleWindow xmlns:mx="http://www.adobe.com/2006/mxml" title="Hierarquia do Funcionário" xmlns:util="util.*" layout="absolute" width="1000" height="600">
+	<mx:Script>
+		<![CDATA[
+			import bean.UsuarioBean;
+			
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.rpc.events.ResultEvent;
+			
+			import util.ProgressBarHelper;
+			private var urlLogin:String;
+			private var usuario:UsuarioBean;
+			public function init(urlLogin:String, usuario:UsuarioBean):void{
+				this.urlLogin = urlLogin;
+				this.title += " "+usuario.nome;
+				this.usuario = usuario;
+				serviceController.findAllUsuariosDesassociados(usuario.matricula, usuario.filial);
+				serviceController.findAllUsuariosAssociados(usuario.matricula);
+			}
+			private function onResultFindAllUsuariosDesassociados(event:ResultEvent):void{
+				gridDesassociados.dataProvider = ArrayCollection(event.result);
+			}
+			private function onResultFindAllUsuariosAssociados(event:ResultEvent):void{
+				gridAssociados.dataProvider = ArrayCollection(event.result);
+			}
+			private function desassociarFuncionario():void{
+				serviceController.desassociarFuncionario(UsuarioBean(gridAssociados.selectedItem).matricula);
+			}
+			private function onResultDesassociarFuncionario(event:ResultEvent):void{
+				if(Boolean(event.result) == true){
+					serviceController.findAllUsuariosDesassociados(usuario.matricula, usuario.filial);
+					ArrayCollection(gridAssociados.dataProvider).removeItemAt(gridAssociados.selectedIndex);
+				}else{
+					Alert.show("Não foi possível desassociar funcionário!", "Alerta");
+				}
+			}
+			private function associarFuncionario():void{
+				serviceController.associarFuncionario(usuario.matricula, UsuarioBean(gridDesassociados.selectedItem).matricula);
+			}
+			private function onResultAssociarFuncionario(event:ResultEvent):void{
+				if(Boolean(event.result) == true){
+					serviceController.findAllUsuariosAssociados(usuario.matricula);
+					ArrayCollection(gridDesassociados.dataProvider).removeItemAt(gridDesassociados.selectedIndex);
+				}else{
+					Alert.show("Não foi possível Associar funcionário!", "Alerta");
+				}
+			}
+		]]>
+	</mx:Script>
+	
+	
+	
+	<mx:RemoteObject destination="service" invoke="{ProgressBarHelper.openProgressBar(this)}" id="serviceController" showBusyCursor="true" fault="ProgressBarHelper.erro(event, urlLogin);ProgressBarHelper.removeProgressBar()">
+		<mx:method name="findAllUsuariosDesassociados" result="onResultFindAllUsuariosDesassociados(event);ProgressBarHelper.removeProgressBar()" />
+		<mx:method name="findAllUsuariosAssociados" result="onResultFindAllUsuariosAssociados(event);ProgressBarHelper.removeProgressBar()" />
+		<mx:method name="desassociarFuncionario" result="onResultDesassociarFuncionario(event);ProgressBarHelper.removeProgressBar()" />
+		<mx:method name="associarFuncionario" result="onResultAssociarFuncionario(event);ProgressBarHelper.removeProgressBar()" />
+	</mx:RemoteObject>
+	<mx:DataGrid x="30" y="32" width="45%" height="100%" id="gridDesassociados" doubleClickEnabled="true" doubleClick="associarFuncionario();">
+		<mx:columns>
+			<mx:DataGridColumn headerText="Nome" dataField="nome"/>
+			<mx:DataGridColumn headerText="Cargo" width="140" dataField="cargo"/>
+			<mx:DataGridColumn headerText="Job Control" width="80" dataField="jobControl"/>
+			
+		</mx:columns>
+	</mx:DataGrid>
+	<mx:DataGrid x="500" y="32" width="432" height="100%" id="gridAssociados" doubleClickEnabled="true" doubleClick="desassociarFuncionario()">
+		<mx:columns>
+			<mx:DataGridColumn headerText="Nome" dataField="nome"/>
+			<mx:DataGridColumn headerText="Cargo" width="140" dataField="cargo"/>
+			<mx:DataGridColumn headerText="Job Control" width="80" dataField="jobControl"/>
+		</mx:columns>
+	</mx:DataGrid>
+	<mx:Label x="30" y="10" text="Funcionários desassociados" fontWeight="bold"/>
+	<mx:Label x="500" y="10" text="Funcionários Associados" fontWeight="bold"/>
+	
+</util:ModuleTitleWindow>
