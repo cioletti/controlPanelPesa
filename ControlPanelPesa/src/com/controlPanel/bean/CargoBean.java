@@ -12,7 +12,7 @@ public class CargoBean implements Serializable {
 
 	public CargoBean() { 
 	}
- 
+  
 	public Long getId() {
 		return id;
 	}
